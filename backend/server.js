@@ -1,54 +1,52 @@
 const express = require("express");
-const dotenv = require("dotenv");
 const http = require("http");
-const socketIo = require("socket.io");
+const { Server } = require("socket.io");
 const cors = require("cors");
-const app = express();
-const server = http.createServer(app);
-dotenv.config();
 
-const io = socketIo(server, {
+const app = express();
+app.use(cors());
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:3000",
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors());
-
-const users = {};
-const videoStates = {};
-
 io.on("connection", (socket) => {
-  console.log("New client connected", socket.id);
-  socket.on("join", (username) => {
-    users[socket.id] = username;
-    console.log(`{username} joined`);
-    socket.broadcast.emit("user-joined", username);
+  console.log("User connected:", socket.id);
+
+  socket.on("joinRoom", (room) => {
+    socket.join(room);
+    console.log(`User ${socket.id} joined room: ${room}`);
   });
 
-  socket.on("chat-message", (message) => {
-    console.log("Message received", message);
-    socket.broadcast.emit("chat-message", { user: users[socket.id], message });
+  socket.on("sendMessage", (data) => {
+    console.log(
+      `Message from ${data.username} in room ${data.room}: ${data.message}`
+    );
+    // Broadcast message to everyone in the room
+    io.to(data.room).emit("message", data);
+  });
+  socket.on("videoOffer", (data) => {
+    io.to(data.room).emit("videoOffer", data);
   });
 
-  socket.on("toggle-video", (status) => {
-    videoStates[socket.id] = status;
-    socket.broadcast.emit("video-status", { user: users[socket.id], status });
+  socket.on("videoAnswer", (data) => {
+    io.to(data.room).emit("videoAnswer", data);
+  });
+
+  socket.on("iceCandidate", (data) => {
+    io.to(data.room).emit("iceCandidate", data);
   });
 
   socket.on("disconnect", () => {
-    const username = users[socket.id];
-    delete users[socket.id];
-    delete videoStates[socket.id];
-    console.log(`${username} disconnected.`);
-    socket.broadcast.emit("user-left", username);
+    console.log("User disconnected:", socket.id);
   });
 });
-
-app.get("/", (req, res) => {
-  res.send("Server is running");
-});
-app.listen(8000, () => {
-  console.log("Server is running!");
+const PORT = 8000 || process.env.PORT;
+server.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
 });
